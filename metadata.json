@@ -1,0 +1,5 @@
+{
+  "name": "Ballistic Trajectory Master",
+  "description": "A visual ballistics calculator for projectile games. Features real-time trajectory simulation, auto-calculation of force based on target coordinates, and wind adjustment.",
+  "requestFramePermissions": []
+}
