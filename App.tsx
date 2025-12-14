@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import GameCanvas from './components/GameCanvas';
 import Controls from './components/Controls';
-import { GameMode, Point, PHYSICS_CONSTANTS, ThemeMode, SavedTrajectory } from './types';
+import MemoryDock from './components/MemoryDock';
+import { GameMode, Point, PHYSICS_CONSTANTS, ThemeMode, SavedTrajectory, AnalysisItem } from './types';
 import { solvePower, calculateTrajectory } from './services/physicsEngine';
 
 // Tank position is fixed at origin for analysis view
@@ -9,11 +10,22 @@ const TANK_POS: Point = { x: 0, y: 0 };
 // Initial target placed in a typical "shot" location (positive X, slight positive Y)
 const INITIAL_TARGET: Point = { x: 15, y: 5 };
 
+export const TRAJECTORY_COLORS = [
+  '#a855f7', // Purple
+  '#ef4444', // Red
+  '#22c55e', // Green
+  '#3b82f6', // Blue
+  '#f97316', // Orange
+  '#06b6d4', // Cyan
+];
+
 function App() {
   const [mode, setMode] = useState<GameMode>(GameMode.AUTO_AIM);
-  const [isNight, setIsNight] = useState(true);
-  const [zoom, setZoom] = useState(1.0); // 1.0 = Default view range defined in constants
-  const [snapToGrid, setSnapToGrid] = useState(false);
+  const [isNight, setIsNight] = useState(false); // Default to Day mode
+  const [zoom, setZoom] = useState(0.7); // Default view range 70%
+  const [snapToGrid, setSnapToGrid] = useState(true); // Default to Snap ON
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [showCurrentTrajectory, setShowCurrentTrajectory] = useState(true); 
   
   // Inputs
   const [angle, setAngle] = useState(65);
@@ -23,22 +35,24 @@ function App() {
 
   // Memory / History
   const [savedTrajectories, setSavedTrajectories] = useState<SavedTrajectory[]>([]);
+  
+  // Analysis Items (Managed on Canvas now)
+  const [analysisItems, setAnalysisItems] = useState<AnalysisItem[]>([]);
+
+  // Selection State (Shared)
+  // Order matters: [FirstSelected, SecondSelected]
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   // Derived State
   const [calculatedPower, setCalculatedPower] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Screen Size (Used for Aspect Ratio calculation mainly)
-  const [screenSize, setScreenSize] = useState({ width: 0, height: 0 });
-
+  // 0. Theme Sync Effect: Ensure body background matches app theme to prevent "black bars"
   useEffect(() => {
-    const handleResize = () => {
-      setScreenSize({ width: window.innerWidth, height: window.innerHeight });
-    };
-    handleResize();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+    document.body.className = isNight 
+        ? 'bg-slate-950 text-slate-100 overflow-hidden' 
+        : 'bg-slate-100 text-slate-900 overflow-hidden';
+  }, [isNight]);
 
   // 1. Logic Loop: Handle Physics Calculation
   useEffect(() => {
@@ -90,7 +104,7 @@ function App() {
   }, [trajectory]);
 
   // --- Memory Functions ---
-  const saveCurrentTrajectory = () => {
+  const saveCurrentTrajectory = (preferredColor?: string) => {
       const newEntry: SavedTrajectory = {
           id: Date.now().toString(),
           power: manualPower,
@@ -98,6 +112,7 @@ function App() {
           wind: wind,
           target: { ...target },
           visible: true,
+          color: preferredColor || TRAJECTORY_COLORS[0], 
           timestamp: Date.now()
       };
       setSavedTrajectories(prev => [newEntry, ...prev]);
@@ -105,6 +120,10 @@ function App() {
 
   const deleteTrajectory = (id: string) => {
       setSavedTrajectories(prev => prev.filter(t => t.id !== id));
+      // Also cleanup analysis items that depend on this
+      setAnalysisItems(prev => prev.filter(a => !a.parentIds.includes(id)));
+      // Cleanup selection
+      setSelectedIds(prev => prev.filter(pid => pid !== id));
   };
 
   const toggleTrajectoryVisibility = (id: string) => {
@@ -113,40 +132,90 @@ function App() {
       ));
   };
 
-  return (
-    <div className={`flex h-screen w-screen overflow-hidden transition-colors duration-500 ${isNight ? 'bg-slate-950' : 'bg-slate-100'}`}>
-        {/* Main Canvas Area */}
-        <div className="flex-1 h-full p-4 flex flex-col items-center justify-center relative">
-            <div className="w-full h-full max-w-7xl max-h-[85vh] relative flex items-center justify-center">
-                {/* Maintain aspect ratio of the physics world, adapted by zoom */}
-                <div 
-                  className="w-full h-full shadow-2xl rounded-xl overflow-hidden"
-                  // We let the SVG handle aspect ratio internally via viewBox, 
-                  // but we want the container to be responsive.
-                >
-                    <GameCanvas 
-                        trajectory={trajectory}
-                        target={target}
-                        tankPos={TANK_POS}
-                        onSetTarget={setTarget}
-                        impactPoint={impactPoint}
-                        angle={angle}
-                        setAngle={setAngle}
-                        zoom={zoom}
-                        isNight={isNight}
-                        wind={wind}
-                        setWind={setWind}
-                        snapToGrid={snapToGrid}
-                        savedTrajectories={savedTrajectories}
-                    />
-                </div>
-            </div>
-             <div className={`mt-4 text-sm ${isNight ? 'text-slate-500' : 'text-slate-400'}`}>
-                Click map to move target • Drag angle pointer to aim • Zoom to see more
-            </div>
-        </div>
+  const updateTrajectoryColor = (id: string, newColor: string) => {
+    setSavedTrajectories(prev => prev.map(t => {
+        if (t.id !== id) return t;
+        return { ...t, color: newColor };
+    }));
+  };
 
-        {/* Sidebar Controls */}
+  const toggleColorVisibility = (color: string) => {
+      setSavedTrajectories(prev => {
+          const group = prev.filter(t => t.color === color);
+          if (group.length === 0) return prev;
+          const allVisible = group.every(t => t.visible);
+          return prev.map(t => {
+              if (t.color === color) {
+                  return { ...t, visible: !allVisible };
+              }
+              return t;
+          });
+      });
+  };
+
+  // --- Analysis Functions ---
+  const handleToggleSelection = (id: string) => {
+      setSelectedIds(prev => {
+          if (prev.includes(id)) {
+              // Unselect
+              return prev.filter(pid => pid !== id);
+          } else {
+              // Select
+              if (prev.length >= 2) {
+                  // If we already have 2, shift the oldest one out (First selected becomes the one that remains)
+                  return [prev[1], id]; 
+              }
+              return [...prev, id];
+          }
+      });
+  };
+
+  const handleAnalyze = (id1: string, id2: string) => {
+      const t1 = savedTrajectories.find(t => t.id === id1);
+      const t2 = savedTrajectories.find(t => t.id === id2);
+      
+      if (!t1 || !t2) return;
+
+      // Logic: First Selected (t1) - Second Selected (t2)
+      const diffPower = t1.power - t2.power;
+      
+      const midX = (t1.target.x + t2.target.x) / 2;
+      const midY = (t1.target.y + t2.target.y) / 2;
+
+      const newItem: AnalysisItem = {
+          id: `diff-${Date.now()}`,
+          powerDiff: diffPower,
+          target: { x: midX, y: midY },
+          parentIds: [id1, id2],
+          visible: true,
+          color: t1.color, // Inherit color from the first selected trajectory
+      };
+
+      setAnalysisItems(prev => [newItem, ...prev]);
+      setSelectedIds([]); // Clear selection after creating Diff
+  };
+
+  const deleteAnalysisItem = (id: string) => {
+      setAnalysisItems(prev => prev.filter(a => a.id !== id));
+  };
+
+  return (
+    <div className={`fixed inset-0 w-full h-full flex overflow-hidden transition-colors duration-500 ${isNight ? 'bg-slate-950' : 'bg-slate-100'}`}>
+        <style>{`
+          ::-webkit-scrollbar-thumb {
+            background-color: ${isNight ? '#334155' : '#cbd5e1'};
+          }
+          ::-webkit-scrollbar-thumb:hover {
+            background-color: ${isNight ? '#475569' : '#94a3b8'};
+          }
+          ::-webkit-scrollbar-track {
+            background-color: transparent;
+          }
+          .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+          }
+        `}</style>
+
         <Controls 
             angle={angle}
             setAngle={setAngle}
@@ -166,11 +235,57 @@ function App() {
             setZoom={setZoom}
             snapToGrid={snapToGrid}
             setSnapToGrid={setSnapToGrid}
-            onSaveTrajectory={saveCurrentTrajectory}
-            savedTrajectories={savedTrajectories}
-            onDeleteTrajectory={deleteTrajectory}
-            onToggleVisibility={toggleTrajectoryVisibility}
+            isOpen={isSidebarOpen}
+            onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
+            showCurrentTrajectory={showCurrentTrajectory}
+            onToggleCurrentTrajectory={() => setShowCurrentTrajectory(!showCurrentTrajectory)}
+            selectedIds={selectedIds} // Pass down
+            onToggleSelection={handleToggleSelection} // Pass down
         />
+
+        <div className="flex-1 relative z-0 h-full w-full min-w-0 p-4 flex flex-col items-center justify-center transition-all duration-300 ease-in-out">
+            <div className="w-full h-full max-w-full max-h-[95vh] relative flex items-center justify-center">
+                <div className="w-full h-full shadow-2xl rounded-xl overflow-hidden relative">
+                    <GameCanvas 
+                        trajectory={trajectory}
+                        target={target}
+                        tankPos={TANK_POS}
+                        onSetTarget={setTarget}
+                        impactPoint={impactPoint}
+                        angle={angle}
+                        setAngle={setAngle}
+                        zoom={zoom}
+                        setZoom={setZoom}
+                        isNight={isNight}
+                        wind={wind}
+                        setWind={setWind}
+                        snapToGrid={snapToGrid}
+                        savedTrajectories={savedTrajectories}
+                        analysisItems={analysisItems}
+                        onDeleteAnalysis={deleteAnalysisItem}
+                        showCurrentTrajectory={showCurrentTrajectory}
+                        selectedIds={selectedIds} // Pass down
+                        onToggleSelection={handleToggleSelection} // Pass down
+                        onAnalyze={handleAnalyze} // Pass down for canvas button
+                    />
+
+                    {/* New Memory Dock Overlay */}
+                    <MemoryDock 
+                        isNight={isNight}
+                        savedTrajectories={savedTrajectories}
+                        onSaveTrajectory={saveCurrentTrajectory}
+                        onDeleteTrajectory={deleteTrajectory}
+                        onToggleVisibility={toggleTrajectoryVisibility}
+                        onToggleColorVisibility={toggleColorVisibility}
+                        selectedIds={selectedIds}
+                        onToggleSelection={handleToggleSelection}
+                    />
+                </div>
+            </div>
+             <div className={`mt-2 text-sm ${isNight ? 'text-slate-500' : 'text-slate-400'} ${!isSidebarOpen ? 'opacity-50' : 'opacity-100'} transition-opacity text-center px-4`}>
+                Click map to move target • Drag angle pointer to aim • Click items to select for Diff
+            </div>
+        </div>
     </div>
   );
 }

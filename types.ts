@@ -1,3 +1,4 @@
+
 export interface Point {
   x: number;
   y: number;
@@ -24,7 +25,17 @@ export interface SavedTrajectory {
   wind: number;
   target: Point;
   visible: boolean;
+  color: string;
   timestamp: number;
+}
+
+export interface AnalysisItem {
+    id: string;
+    powerDiff: number;
+    target: Point; // Midpoint for display
+    parentIds: [string, string]; // [FirstSelected, SecondSelected]
+    visible: boolean;
+    color: string;
 }
 
 export const PHYSICS_CONSTANTS = {

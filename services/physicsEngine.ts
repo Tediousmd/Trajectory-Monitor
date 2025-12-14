@@ -71,8 +71,7 @@ export const calculateTrajectory = (
     points.push({ x, y });
 
     // Expanded bounds for deep analysis (allows falling way below 0)
-    // Using -20 allows visualizing shots into the "negative" 18 zone
-    if (y < -20 || x > 100 || x < -20) break; 
+    if (y < -30 || x > 200 || x < -50) break; 
     t += dt;
   }
 
@@ -81,6 +80,18 @@ export const calculateTrajectory = (
 
 /**
  * Solves for the required power to hit a target.
+ * Uses an analytical approach by solving for Time of Flight (t).
+ * 
+ * Derivation:
+ * 1. Express v0 in terms of t from the X-equation:
+ *    x(t) = target_x
+ *    => v0_x = (K * (target_x - v_wind * t)) / (1 - exp(-Kt)) + v_wind
+ * 
+ * 2. Substitute v0_x into the Y-equation (since v0_y = v0_x * tan(theta)):
+ *    y(t) = target_y
+ *    This yields a function F(t) = 0 where t is the only variable.
+ * 
+ * 3. Solve F(t) = 0 for t, then compute v0.
  */
 export const solvePower = (
   dist: number,
@@ -88,41 +99,54 @@ export const solvePower = (
   angle: number,
   wind: number
 ): number | null => {
+  // Edge case: Target extremely close
+  if (Math.abs(dist) < 0.1) return 1.0;
+
   const rad = (angle * Math.PI) / 180;
+  
+  // Edge case: 90 degrees (Vertical shot) - Cannot control X via power normally
+  if (Math.abs(Math.cos(rad)) < 1e-9) {
+      return null; 
+  }
+
   const v_wind = wind / K;
+  const v_term = G_K; // Terminal velocity parameter for gravity (G/K)
+  const tanTheta = Math.tan(rad);
 
-  // Internal error function: returns (simulated_height - target_height) for a given velocity v
-  const height_error_at_v = (v: number): number => {
-    const vx = v * Math.cos(rad);
-    const vy = v * Math.sin(rad);
+  // Constant C combines wind and gravity effects scaled by angle
+  const C = v_wind * tanTheta + v_term;
 
-    // Step 1: Find time t where x(t) = dist
-    const x_dist_func = (t: number): number => {
-      const term1 = (vx - v_wind) / K;
-      const term2 = 1 - Math.exp(-K * t);
-      const term3 = v_wind * t;
-      return term1 * term2 + term3 - dist;
-    };
-
-    // Try to find impact time between 0.01s and 20s
-    const t_impact = brentq(x_dist_func, 0.01, 20.0);
-
-    if (t_impact === null) {
-      const x_at_max = x_dist_func(20.0);
-      if (x_at_max < 0) return -99999; // Too weak
-      return 99999; 
-    }
-
-    // Step 2: Calculate height at that time
-    const y_sim = ((vy + G_K) / K) * (1 - Math.exp(-K * t_impact)) - G_K * t_impact;
-
-    return y_sim - height;
+  /**
+   * The Function F(t) representing the vertical error at time t,
+   * assuming velocity is set perfectly to match horizontal distance at time t.
+   * 
+   * F(t) = x * tan(theta) + C * ( (1 - e^-Kt)/K - t ) - y
+   */
+  const error_func = (t: number): number => {
+      const E = 1 - Math.exp(-K * t);
+      // derived term: x * tanTheta + C * (E/K - t) - height
+      return (dist * tanTheta) + C * ((E / K) - t) - height;
   };
 
-  try {
-    const final_v = brentq(height_error_at_v, 0.5, 200); 
-    return final_v;
-  } catch (e) {
-    return null;
+  // Search for a root in time t [0.01s, 20s]
+  // F(t) is generally monotonic (derivative is C(e^-Kt - 1)), so bisection is safe and fast.
+  const time_solution = brentq(error_func, 0.01, 20.0);
+
+  if (time_solution === null) {
+      // No solution exists (e.g., aiming below target, or target physically out of reach due to drag limits)
+      return null;
   }
+
+  // Calculate required initial velocity X based on time t
+  // v_x0 = (K * (x - v_wind * t)) / (1 - e^-Kt) + v_wind
+  const E_final = 1 - Math.exp(-K * time_solution);
+  const v_x0 = (K * (dist - v_wind * time_solution)) / E_final + v_wind;
+
+  // Calculate total power: v0 = v_x0 / cos(theta)
+  const power = v_x0 / Math.cos(rad);
+
+  // Filter out invalid physical results (e.g., negative power implies shooting backwards)
+  if (power < 0) return null;
+
+  return power;
 };
