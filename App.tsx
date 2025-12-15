@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import GameCanvas from './components/GameCanvas';
-import Controls from './components/Controls';
-import MemoryDock from './components/MemoryDock';
-import { GameMode, Point, PHYSICS_CONSTANTS, ThemeMode, SavedTrajectory, AnalysisItem } from './types';
+import { GameMode, Point, SavedTrajectory, AnalysisItem } from './types';
 import { solvePower, calculateTrajectory } from './services/physicsEngine';
 
 // Tank position is fixed at origin for analysis view
@@ -24,7 +22,6 @@ function App() {
   const [isNight, setIsNight] = useState(false); // Default to Day mode
   const [zoom, setZoom] = useState(0.7); // Default view range 70%
   const [snapToGrid, setSnapToGrid] = useState(true); // Default to Snap ON
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [showCurrentTrajectory, setShowCurrentTrajectory] = useState(true); 
   
   // Inputs
@@ -126,17 +123,16 @@ function App() {
       setSelectedIds(prev => prev.filter(pid => pid !== id));
   };
 
+  const updateTrajectoryColor = (id: string, newColor: string) => {
+      setSavedTrajectories(prev => prev.map(t => 
+          t.id === id ? { ...t, color: newColor } : t
+      ));
+  };
+
   const toggleTrajectoryVisibility = (id: string) => {
       setSavedTrajectories(prev => prev.map(t => 
         t.id === id ? { ...t, visible: !t.visible } : t
       ));
-  };
-
-  const updateTrajectoryColor = (id: string, newColor: string) => {
-    setSavedTrajectories(prev => prev.map(t => {
-        if (t.id !== id) return t;
-        return { ...t, color: newColor };
-    }));
   };
 
   const toggleColorVisibility = (color: string) => {
@@ -167,6 +163,17 @@ function App() {
               }
               return [...prev, id];
           }
+      });
+  };
+
+  const handleSelectExclusive = (id: string) => {
+      setSelectedIds(prev => {
+          // If this ID is already the single selection, toggle it off
+          if (prev.length === 1 && prev[0] === id) {
+              return [];
+          }
+          // Otherwise, select it exclusively
+          return [id];
       });
   };
 
@@ -216,36 +223,9 @@ function App() {
           }
         `}</style>
 
-        <Controls 
-            angle={angle}
-            setAngle={setAngle}
-            wind={wind}
-            setWind={setWind}
-            power={manualPower}
-            setPower={setManualPower}
-            mode={mode}
-            setMode={setMode}
-            target={target}
-            tankPos={TANK_POS}
-            calculationResult={calculatedPower}
-            error={error}
-            isNight={isNight}
-            setIsNight={setIsNight}
-            zoom={zoom}
-            setZoom={setZoom}
-            snapToGrid={snapToGrid}
-            setSnapToGrid={setSnapToGrid}
-            isOpen={isSidebarOpen}
-            onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
-            showCurrentTrajectory={showCurrentTrajectory}
-            onToggleCurrentTrajectory={() => setShowCurrentTrajectory(!showCurrentTrajectory)}
-            selectedIds={selectedIds} // Pass down
-            onToggleSelection={handleToggleSelection} // Pass down
-        />
-
-        <div className="flex-1 relative z-0 h-full w-full min-w-0 p-4 flex flex-col items-center justify-center transition-all duration-300 ease-in-out">
-            <div className="w-full h-full max-w-full max-h-[95vh] relative flex items-center justify-center">
-                <div className="w-full h-full shadow-2xl rounded-xl overflow-hidden relative">
+        <div className="flex-1 relative z-0 h-full w-full min-w-0 flex flex-col items-center justify-center transition-all duration-300 ease-in-out">
+            <div className="w-full h-full relative flex items-center justify-center">
+                <div className="w-full h-full overflow-hidden relative">
                     <GameCanvas 
                         trajectory={trajectory}
                         target={target}
@@ -257,33 +237,39 @@ function App() {
                         zoom={zoom}
                         setZoom={setZoom}
                         isNight={isNight}
+                        setIsNight={setIsNight}
                         wind={wind}
                         setWind={setWind}
+                        power={manualPower}
+                        setPower={setManualPower}
+                        mode={mode}
+                        setMode={setMode}
+                        error={error}
                         snapToGrid={snapToGrid}
+                        setSnapToGrid={setSnapToGrid}
+                        
+                        // Trajectory Data
                         savedTrajectories={savedTrajectories}
                         analysisItems={analysisItems}
-                        onDeleteAnalysis={deleteAnalysisItem}
-                        showCurrentTrajectory={showCurrentTrajectory}
-                        selectedIds={selectedIds} // Pass down
-                        onToggleSelection={handleToggleSelection} // Pass down
-                        onAnalyze={handleAnalyze} // Pass down for canvas button
-                    />
+                        trajectoryColors={TRAJECTORY_COLORS}
 
-                    {/* New Memory Dock Overlay */}
-                    <MemoryDock 
-                        isNight={isNight}
-                        savedTrajectories={savedTrajectories}
+                        // Memory Actions
                         onSaveTrajectory={saveCurrentTrajectory}
                         onDeleteTrajectory={deleteTrajectory}
+                        onUpdateTrajectoryColor={updateTrajectoryColor}
                         onToggleVisibility={toggleTrajectoryVisibility}
                         onToggleColorVisibility={toggleColorVisibility}
-                        selectedIds={selectedIds}
-                        onToggleSelection={handleToggleSelection}
+                        onDeleteAnalysis={deleteAnalysisItem}
+                        
+                        // Analysis Actions
+                        showCurrentTrajectory={showCurrentTrajectory}
+                        setShowCurrentTrajectory={setShowCurrentTrajectory}
+                        selectedIds={selectedIds} 
+                        onToggleSelection={handleToggleSelection} 
+                        onSelectExclusive={handleSelectExclusive}
+                        onAnalyze={handleAnalyze} 
                     />
                 </div>
-            </div>
-             <div className={`mt-2 text-sm ${isNight ? 'text-slate-500' : 'text-slate-400'} ${!isSidebarOpen ? 'opacity-50' : 'opacity-100'} transition-opacity text-center px-4`}>
-                Click map to move target • Drag angle pointer to aim • Click items to select for Diff
             </div>
         </div>
     </div>
