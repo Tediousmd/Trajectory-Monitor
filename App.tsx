@@ -23,6 +23,7 @@ function App() {
   const [zoom, setZoom] = useState(0.7); // Default view range 70%
   const [snapToGrid, setSnapToGrid] = useState(true); // Default to Snap ON
   const [showCurrentTrajectory, setShowCurrentTrajectory] = useState(true); 
+  const [subTrajLevel, setSubTrajLevel] = useState(0); // 0=None, 1=3 Paths, 2=5 Paths, 3=7 Paths
   
   // Inputs
   const [angle, setAngle] = useState(65);
@@ -93,6 +94,29 @@ function App() {
   const trajectory = useMemo(() => {
     return calculateTrajectory(TANK_POS, manualPower, angle, wind);
   }, [manualPower, angle, wind]);
+
+  const subTrajectories = useMemo(() => {
+    if (subTrajLevel === 0) return [];
+    
+    const allOffsets = [10, 20, 30];
+    const activeOffsets: number[] = [];
+    
+    // Level 1: +/- 10
+    // Level 2: +/- 10, +/- 20
+    // Level 3: +/- 10, +/- 20, +/- 30
+    for (let i = 0; i < subTrajLevel; i++) {
+      activeOffsets.push(-allOffsets[i]);
+      activeOffsets.push(allOffsets[i]);
+    }
+
+    return activeOffsets.map(offset => {
+      let subAngle = angle + offset;
+      // Mirror behavior of the main angle if it goes over 180 or under 0
+      if (subAngle < 0) subAngle = 0;
+      if (subAngle > 180) subAngle = 180;
+      return calculateTrajectory(TANK_POS, manualPower, subAngle, wind);
+    });
+  }, [subTrajLevel, manualPower, angle, wind]);
 
   // Find where it hits ground or target height
   const impactPoint = useMemo(() => {
@@ -264,6 +288,9 @@ function App() {
                         // Analysis Actions
                         showCurrentTrajectory={showCurrentTrajectory}
                         setShowCurrentTrajectory={setShowCurrentTrajectory}
+                        subTrajLevel={subTrajLevel}
+                        setSubTrajLevel={setSubTrajLevel}
+                        subTrajectories={subTrajectories}
                         selectedIds={selectedIds} 
                         onToggleSelection={handleToggleSelection} 
                         onSelectExclusive={handleSelectExclusive}

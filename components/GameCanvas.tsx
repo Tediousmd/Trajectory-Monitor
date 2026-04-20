@@ -1,6 +1,6 @@
 import React, { useRef, useMemo, useState, useEffect } from 'react';
 import { Point, PHYSICS_CONSTANTS, SavedTrajectory, AnalysisItem, GameMode } from '../types';
-import { Wind, ZoomIn, ZoomOut, Calculator, Zap, MousePointer2, Settings, Sun, Moon, Magnet, Activity, AlertTriangle, MapPin, ChevronLeft, ChevronRight, X, Database, Save, Eye, EyeOff, Trash2, CheckCircle2, Palette } from 'lucide-react';
+import { Wind, ZoomIn, ZoomOut, Calculator, Zap, MousePointer2, Settings, Sun, Moon, Magnet, Activity, AlertTriangle, MapPin, ChevronLeft, ChevronRight, X, Database, Save, Eye, EyeOff, Trash2, CheckCircle2, Palette, Layers } from 'lucide-react';
 import { calculateTrajectory } from '../services/physicsEngine';
 
 interface GameCanvasProps {
@@ -38,6 +38,9 @@ interface GameCanvasProps {
 
   showCurrentTrajectory: boolean;
   setShowCurrentTrajectory: (v: boolean) => void;
+  subTrajLevel: number;
+  setSubTrajLevel: (v: number) => void;
+  subTrajectories: Point[][];
   // Selection
   selectedIds?: string[];
   onToggleSelection?: (id: string) => void;
@@ -85,6 +88,9 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
   onDeleteAnalysis,
   showCurrentTrajectory,
   setShowCurrentTrajectory,
+  subTrajLevel,
+  setSubTrajLevel,
+  subTrajectories,
   selectedIds = [],
   onToggleSelection,
   onSelectExclusive,
@@ -1166,7 +1172,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
       {/* --- Settings Widget (Top Right) --- */}
       <div 
          {...settingsHandlers}
-         className={`absolute top-4 right-4 backdrop-blur rounded-xl border shadow-xl flex items-center z-20 transition-all duration-300 ease-in-out overflow-hidden ${windWidgetClasses} ${isSettingsExpanded ? 'w-48 p-2 gap-2' : 'w-10 h-10 p-2 justify-center cursor-pointer hover:w-48 hover:p-2 hover:gap-2'}`}
+         className={`absolute top-4 right-4 backdrop-blur rounded-xl border shadow-xl flex items-center z-20 transition-all duration-300 ease-in-out overflow-hidden ${windWidgetClasses} ${isSettingsExpanded ? 'w-64 p-2 gap-2' : 'w-10 h-10 p-2 justify-center cursor-pointer hover:w-64 hover:p-2 hover:gap-2'}`}
       >
         {isSettingsExpanded ? (
             <div className="flex w-full justify-between items-center gap-1">
@@ -1178,6 +1184,18 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
                  </button>
                  <button onClick={() => setShowCurrentTrajectory(!showCurrentTrajectory)} className={`p-2 rounded-lg flex-1 flex justify-center ${showCurrentTrajectory ? 'bg-emerald-500 text-white' : (isNight ? 'bg-slate-700 text-slate-400' : 'bg-slate-200 text-slate-500')}`} title="Toggle Path">
                     <Activity size={16} />
+                 </button>
+                 <button 
+                    onClick={() => setSubTrajLevel((subTrajLevel + 1) % 4)} 
+                    className={`p-2 rounded-lg flex-1 flex justify-center relative ${subTrajLevel > 0 ? 'bg-purple-500 text-white' : (isNight ? 'bg-slate-700 text-slate-400' : 'bg-slate-200 text-slate-500')}`} 
+                    title={`Trajectory Mode: ${subTrajLevel === 0 ? 'Single (1)' : subTrajLevel === 1 ? 'Spread Narrow (3)' : subTrajLevel === 2 ? 'Spread Medium (5)' : 'Spread Wide (7)'}`}
+                 >
+                    <Layers size={16} />
+                    {subTrajLevel > 0 && (
+                        <span className="absolute -top-1 -right-1 bg-white text-purple-600 text-[8px] font-bold w-3.5 h-3.5 rounded-full flex items-center justify-center border border-purple-500">
+                            {subTrajLevel === 1 ? 3 : subTrajLevel === 2 ? 5 : 7}
+                        </span>
+                    )}
                  </button>
             </div>
         ) : (
@@ -1544,6 +1562,24 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
                     className="cursor-pointer hover:opacity-100 transition-opacity"
                     style={{ opacity: 0.8 }}
                 />
+
+                {/* Sub Trajectories */}
+                {subTrajectories.length > 0 && subTrajectories.map((subTraj, idx) => {
+                    const subPath = pointsToPath(subTraj);
+                    if (!subPath) return null;
+                    return (
+                        <path 
+                            key={`sub-traj-${idx}`} 
+                            d={subPath} 
+                            fill="none" 
+                            stroke={mainColor} 
+                            strokeWidth={1.5 * pixelScale} 
+                            strokeDasharray={`${3*pixelScale},${6*pixelScale}`} 
+                            opacity="0.35" 
+                            style={{ transition: 'opacity 0.3s ease' }}
+                        />
+                    );
+                })}
 
                 <path d={trajectoryPath} fill="none" stroke={mainColor} strokeWidth={4 * pixelScale} strokeDasharray={`${10*pixelScale},${10*pixelScale}`} className="opacity-80" />
 

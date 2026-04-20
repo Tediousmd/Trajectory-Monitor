@@ -1,6 +1,6 @@
 import React from 'react';
 import { GameMode, Point } from '../types';
-import { Wind, Crosshair, Zap, MousePointer2, Sun, Moon, Magnet, Plus, Minus, ChevronRight, ChevronLeft, Activity } from 'lucide-react';
+import { Wind, Crosshair, Zap, MousePointer2, Sun, Moon, Magnet, Plus, Minus, ChevronRight, ChevronLeft, Activity, Layers } from 'lucide-react';
 
 interface ControlsProps {
   angle: number;
@@ -27,6 +27,9 @@ interface ControlsProps {
   // Live Trajectory Toggle
   showCurrentTrajectory: boolean;
   onToggleCurrentTrajectory: () => void;
+  // Sub Trajectory Toggle
+  showSubTrajectories: boolean;
+  onToggleSubTrajectories: () => void;
   // Selection
   selectedIds: string[];
   onToggleSelection: (id: string) => void;
@@ -55,6 +58,8 @@ const Controls: React.FC<ControlsProps> = ({
   onToggle,
   showCurrentTrajectory,
   onToggleCurrentTrajectory,
+  showSubTrajectories,
+  onToggleSubTrajectories,
 }) => {
   
   const dist = Math.abs(target.x - tankPos.x).toFixed(2);
@@ -151,12 +156,15 @@ const Controls: React.FC<ControlsProps> = ({
                       <div className="flex justify-between items-center mb-3">
                           <h3 className={`text-xs font-bold ${themeClasses.subText} uppercase tracking-wider`}>Target Data</h3>
                       </div>
-                      <div className="flex gap-2 mb-4">
-                          <button onClick={() => setSnapToGrid(!snapToGrid)} className={`flex-1 text-xs flex items-center justify-center gap-1 px-2 py-1.5 rounded border transition-colors ${snapToGrid ? 'bg-indigo-600 border-indigo-500 text-white' : `${isNight ? 'bg-slate-900 border-slate-600' : 'bg-white border-slate-300'} ${themeClasses.subText}`}`}>
-                              <Magnet size={12} /> {snapToGrid ? 'Snap ON' : 'Snap OFF'}
+                       <div className="flex flex-wrap gap-2 mb-4">
+                          <button onClick={() => setSnapToGrid(!snapToGrid)} className={`flex-1 min-w-[70px] text-[10px] flex items-center justify-center gap-1 px-2 py-1.5 rounded border transition-colors ${snapToGrid ? 'bg-indigo-600 border-indigo-500 text-white' : `${isNight ? 'bg-slate-900 border-slate-600' : 'bg-white border-slate-300'} ${themeClasses.subText}`}`}>
+                              <Magnet size={12} /> {snapToGrid ? 'Snap' : 'Free'}
                           </button>
-                           <button onClick={onToggleCurrentTrajectory} className={`flex-1 text-xs flex items-center justify-center gap-1 px-2 py-1.5 rounded border transition-colors ${showCurrentTrajectory ? 'bg-sky-600 border-sky-500 text-white' : `${isNight ? 'bg-slate-900 border-slate-600' : 'bg-white border-slate-300'} ${themeClasses.subText}`}`}>
-                              <Activity size={12} /> {showCurrentTrajectory ? 'Live Path ON' : 'Live Path OFF'}
+                           <button onClick={onToggleCurrentTrajectory} className={`flex-1 min-w-[70px] text-[10px] flex items-center justify-center gap-1 px-2 py-1.5 rounded border transition-colors ${showCurrentTrajectory ? 'bg-sky-600 border-sky-500 text-white' : `${isNight ? 'bg-slate-900 border-slate-600' : 'bg-white border-slate-300'} ${themeClasses.subText}`}`}>
+                              <Activity size={12} /> {showCurrentTrajectory ? 'Live' : 'Hidden'}
+                          </button>
+                          <button onClick={onToggleSubTrajectories} className={`flex-1 min-w-[70px] text-[10px] flex items-center justify-center gap-1 px-2 py-1.5 rounded border transition-colors ${showSubTrajectories ? 'bg-purple-600 border-purple-500 text-white' : `${isNight ? 'bg-slate-900 border-slate-600' : 'bg-white border-slate-300'} ${themeClasses.subText}`}`}>
+                              <Layers size={12} /> {showSubTrajectories ? 'Spread' : 'Single'}
                           </button>
                       </div>
                       <div className="grid grid-cols-2 gap-4">
