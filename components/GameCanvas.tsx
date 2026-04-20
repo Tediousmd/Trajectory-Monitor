@@ -228,6 +228,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
   });
 
   // --- Viewport Calculations ---
+  const GRID_ASPECT_RATIO = 1.2; // Y units are 1.2x longer than X units visually
   
   const aspectRatio = containerSize.height > 0 ? containerSize.width / containerSize.height : 1;
   
@@ -236,7 +237,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
   
   // Calculate visible range in physics units
   const currentHeight = baseHeight * zoom;
-  const currentWidth = currentHeight * aspectRatio;
+  // Adjust width calculation to force Y/X pixel ratio to 1.2
+  const currentWidth = currentHeight * (aspectRatio * GRID_ASPECT_RATIO);
 
   const currentMinY = (PHYSICS_CONSTANTS.MIN_Y * zoom) + pan.y;
   const currentMaxY = currentMinY + currentHeight;
@@ -258,6 +260,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
 
   // REDUCED KNOB RADIUS (Smaller Disk)
   const knobRadius = 50 * pixelScale; 
+  const knobRadiusVisualX = knobRadius * GRID_ASPECT_RATIO;
+  const knobRadiusVisualY = knobRadius;
 
   const toSvg = (p: Point) => {
     const percentX = (p.x - currentMinX) / currentWidth;
@@ -476,8 +480,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
               // Formula: pan_new = pan_old + M * (z_old - z_new)
               const deltaZ = pinchRef.current.initialZoom - newZoom;
               
-              // M_x = MIN_X + CenterX * Height * AR
-              const Mx = PHYSICS_CONSTANTS.MIN_X + (pinchRef.current.centerX * baseHeight * aspectRatio);
+              // M_x = MIN_X + CenterX * Height * AR * 1.2
+              const Mx = PHYSICS_CONSTANTS.MIN_X + (pinchRef.current.centerX * baseHeight * (aspectRatio * GRID_ASPECT_RATIO));
               
               // M_y = MIN_Y + (1 - CenterY) * Height
               // Note: CenterY is 0 at top, 1 at bottom. Physics Y is 0 at bottom (relative to MIN_Y).
@@ -597,8 +601,10 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
         }
 
         const tankSvg = toSvg(tankPos);
-        // Angle calc
-        let newAngle = Math.atan2(-(pointerY - tankSvg.y), (pointerX - tankSvg.x)) * (180 / Math.PI);
+        // Angle calc - Compensate for the 1.2x grid stretch for visual alignment
+        // Visual Tan = dY_screen / dX_screen = (dY_svg * sy) / (dX_svg * sx) 
+        // Since sx = sy / 1.2 (due to horizontal squashing), Visual Tan = 1.2 * (dY_svg / dX_svg)
+        let newAngle = Math.atan2(GRID_ASPECT_RATIO * -(pointerY - tankSvg.y), (pointerX - tankSvg.x)) * (180 / Math.PI);
         if (newAngle < 0) newAngle += 360;
         if (newAngle > 180) newAngle = 180; 
         
@@ -769,15 +775,17 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     const endY = Math.ceil(currentMaxY);
 
     const baseColor = isNight ? "#1e293b" : "#e2e8f0";
-    const highlightColor = isNight ? "#64748b" : "#94a3b8";
-    const axisColor = isNight ? "#94a3b8" : "#475569"; 
-    const minorColor = isNight ? "rgba(51, 65, 85, 0.4)" : "rgba(203, 213, 225, 0.6)";
+    const highlightColor = isNight ? "#64748b" : "#94a3b8"; 
+    const frameColor = isNight ? "#94a3b8" : "#64748b"; // Stronger color for the 6x12 frame
+    const axisColor = isNight ? "#cbd5e1" : "#334155"; 
+    const minorColor = isNight ? "rgba(51, 65, 85, 0.4)" : "rgba(203, 213, 225, 0.4)";
     const textColor = isNight ? "#64748b" : "#94a3b8";
 
-    const strokeW = Math.max(1 * pixelScale, 1); 
-    const fontSz = 12 * pixelScale; 
+    const strokeW = Math.max(1 * pixelScale, 0.8); 
+    const frameStrokeW = strokeW * 1.5;
+    const fontSz = 10 * pixelScale; 
     
-    const useSparseGrid = zoom > 1.5;
+    const useSparseGrid = zoom > 1.8;
 
     for (let i = startX; i <= endX; i++) {
         const p = toSvg({ x: i, y: 0 }); 
@@ -792,9 +800,10 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
             <line 
                 key={`v-${i}`} 
                 x1={x} y1={0} x2={x} y2={VIEWBOX_HEIGHT} 
-                stroke={isAxis ? axisColor : (isMajor ? highlightColor : minorColor)} 
-                strokeWidth={isAxis ? strokeW * 2 : strokeW} 
-                strokeDasharray={isAxis || isMajor ? "" : `${4 * pixelScale},${2 * pixelScale}`}
+                stroke={isAxis ? axisColor : (isMajor ? frameColor : minorColor)} 
+                strokeWidth={isAxis ? strokeW * 2.5 : (isMajor ? frameStrokeW : strokeW)} 
+                strokeDasharray={isAxis || isMajor ? "" : `${3 * pixelScale * zoom},${2 * pixelScale * zoom}`}
+                opacity={isAxis || isMajor ? 0.8 : 0.5}
             />
         );
         
@@ -806,7 +815,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
                 fill={isAxis ? axisColor : textColor} 
                 fontSize={fontSz}
                 fontWeight={isAxis || isMajor ? "bold" : "normal"}
-                opacity={isAxis || isMajor ? 1 : 0.7}
+                opacity={isAxis || isMajor ? 1 : 0.5}
                 style={{ userSelect: 'none' }}
             >
                 {i}
@@ -827,9 +836,10 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
             <line 
                 key={`h-${i}`} 
                 x1={0} y1={y} x2={VIEWBOX_WIDTH} y2={y} 
-                stroke={isAxis ? axisColor : (isMajor ? highlightColor : minorColor)} 
-                strokeWidth={isAxis ? strokeW * 2 : strokeW} 
-                strokeDasharray={isAxis || isMajor ? "" : `${4 * pixelScale},${2 * pixelScale}`}
+                stroke={isAxis ? axisColor : (isMajor ? frameColor : minorColor)} 
+                strokeWidth={isAxis ? strokeW * 2.5 : (isMajor ? frameStrokeW : strokeW)} 
+                strokeDasharray={isAxis || isMajor ? "" : `${3 * pixelScale * zoom},${2 * pixelScale * zoom}`}
+                opacity={isAxis || isMajor ? 0.8 : 0.5}
             />
         );
         
@@ -841,7 +851,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
                 fill={isAxis ? axisColor : textColor} 
                 fontSize={fontSz}
                 fontWeight={isAxis || isMajor ? "bold" : "normal"}
-                opacity={isAxis || isMajor ? 1 : 0.7}
+                opacity={isAxis || isMajor ? 1 : 0.5}
                 style={{ userSelect: 'none' }}
             >
                 {i}
@@ -852,8 +862,9 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
   }, [currentMinX, currentMaxX, currentMinY, currentMaxY, VIEWBOX_WIDTH, VIEWBOX_HEIGHT, isNight, toSvg, pixelScale, zoom]);
 
   const knobRad = (angle * Math.PI) / 180;
-  const knobHandleX = tankSvg.x + knobRadius * Math.cos(knobRad);
-  const knobHandleY = tankSvg.y - knobRadius * Math.sin(knobRad);
+  // Account for the visual stretch in coordinate space
+  const knobHandleX = tankSvg.x + knobRadiusVisualX * Math.cos(knobRad);
+  const knobHandleY = tankSvg.y - knobRadiusVisualY * Math.sin(knobRad);
 
   // Dynamic Styles for Widgets
   const windWidgetClasses = isNight 
@@ -1055,10 +1066,36 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
 
   if (containerSize.width === 0) return <div ref={containerRef} className="w-full h-full" />;
 
+  const handleWheel = (e: React.WheelEvent) => {
+    // Only adjust angle if hover is likely over the knob area
+    // Actually, it's better to allow wheel adjustment anytime live path is on for convenience
+    if (!showCurrentTrajectory) return;
+    
+    // Check if we are hovering over the general tank area
+    if (svgRef.current) {
+        const { x, y } = getSvgPoint(e.clientX, e.clientY);
+        const tankSvg = toSvg(tankPos);
+        const dist = Math.hypot(x - tankSvg.x, y - tankSvg.y);
+        
+        // If close to knob, allow adjustment
+        if (dist < knobRadius * 2) {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -1 : 1;
+            setAngle(prev => {
+                let next = prev + delta;
+                if (next < 0) next = 0;
+                if (next > 180) next = 180;
+                return next;
+            });
+        }
+    }
+  };
+
   return (
     <div 
         ref={containerRef}
         className={`relative w-full h-full ${isNight ? 'bg-slate-900' : 'bg-slate-50'} transition-colors duration-500 rounded-xl overflow-hidden select-none`}
+        onWheel={handleWheel}
     >
       {/* Floating Create Diff Button */}
       {selectionMidPoint && onAnalyze && selectedIds.length === 2 && (
@@ -1442,8 +1479,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
                 )}
                 
                 <g transform={`translate(${sd.targetPos.x}, ${sd.targetPos.y})`}>
-                     <circle r={sd.isAnalysis ? 3 * pixelScale : 6 * pixelScale} fill="none" stroke={sd.color} strokeWidth={sd.isAnalysis ? 1 * pixelScale : 3 * pixelScale} />
-                     <circle r={2 * pixelScale} fill={sd.color} />
+                     <ellipse rx={(sd.isAnalysis ? 3 * pixelScale : 6 * pixelScale) * GRID_ASPECT_RATIO} ry={sd.isAnalysis ? 3 * pixelScale : 6 * pixelScale} fill="none" stroke={sd.color} strokeWidth={sd.isAnalysis ? 1 * pixelScale : 3 * pixelScale} />
+                     <ellipse rx={2 * pixelScale * GRID_ASPECT_RATIO} ry={2 * pixelScale} fill={sd.color} />
                 </g>
 
                 {!sd.isAnalysis && (
@@ -1554,10 +1591,11 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
         {/* Active Elements */}
         {showCurrentTrajectory && (
             <>
-                <circle 
+                <ellipse 
                     cx={tankSvg.x} 
                     cy={tankSvg.y} 
-                    r={knobRadius} 
+                    rx={knobRadiusVisualX} 
+                    ry={knobRadiusVisualY}
                     fill="url(#angleGradient)" 
                     className="cursor-pointer hover:opacity-100 transition-opacity"
                     style={{ opacity: 0.8 }}
@@ -1584,7 +1622,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
                 <path d={trajectoryPath} fill="none" stroke={mainColor} strokeWidth={4 * pixelScale} strokeDasharray={`${10*pixelScale},${10*pixelScale}`} className="opacity-80" />
 
                 <g className="cursor-pointer" style={{ pointerEvents: 'none' }}> 
-                    <path d={`M ${tankSvg.x - knobRadius} ${tankSvg.y} A ${knobRadius} ${knobRadius} 0 0 1 ${tankSvg.x + knobRadius} ${tankSvg.y}`} fill="none" stroke={isNight ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)"} strokeWidth={2 * pixelScale} strokeDasharray={`${4*pixelScale},${4*pixelScale}`}/>
+                    <path d={`M ${tankSvg.x - knobRadiusVisualX} ${tankSvg.y} A ${knobRadiusVisualX} ${knobRadiusVisualY} 0 0 1 ${tankSvg.x + knobRadiusVisualX} ${tankSvg.y}`} fill="none" stroke={isNight ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)"} strokeWidth={2 * pixelScale} strokeDasharray={`${4*pixelScale},${4*pixelScale}`}/>
                     
                     <line x1={tankSvg.x} y1={tankSvg.y} x2={knobHandleX} y2={knobHandleY} 
                         stroke="#dc2626" strokeWidth={8 * pixelScale} strokeLinecap="round" opacity="0.3" filter="url(#simpleBlur)" />
@@ -1597,10 +1635,11 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
                 </g>
 
                 <g>
-                    <circle 
+                    <ellipse 
                         cx={tankSvg.x} 
                         cy={tankSvg.y} 
-                        r={18 * pixelScale} 
+                        rx={18 * pixelScale * GRID_ASPECT_RATIO} 
+                        ry={18 * pixelScale}
                         fill={isNight ? "#0f172a" : "#ffffff"} 
                         stroke={mainColor} 
                         strokeWidth={3 * pixelScale} 
@@ -1621,12 +1660,12 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
                 </g>
 
                 <g transform={`translate(${targetSvg.x}, ${targetSvg.y})`}>
-                    <circle r={5 * pixelScale} fill={mainColor} />
-                    <circle r={12 * pixelScale} fill="none" stroke={mainColor} strokeWidth={1.5 * pixelScale} opacity="0.6" className="animate-pulse" />
+                    <ellipse rx={5 * pixelScale * GRID_ASPECT_RATIO} ry={5 * pixelScale} fill={mainColor} />
+                    <ellipse rx={12 * pixelScale * GRID_ASPECT_RATIO} ry={12 * pixelScale} fill="none" stroke={mainColor} strokeWidth={1.5 * pixelScale} opacity="0.6" className="animate-pulse" />
                 </g>
 
                 {impactSvg && (
-                    <circle cx={impactSvg.x} cy={impactSvg.y} r={8 * pixelScale} fill="#fbbf24" stroke="white" strokeWidth={1 * pixelScale} />
+                    <ellipse cx={impactSvg.x} cy={impactSvg.y} rx={8 * pixelScale * GRID_ASPECT_RATIO} ry={8 * pixelScale} fill="#fbbf24" stroke="white" strokeWidth={1 * pixelScale} />
                 )}
             </>
         )}

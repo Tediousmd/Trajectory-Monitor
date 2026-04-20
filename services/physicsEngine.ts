@@ -1,6 +1,7 @@
 import { Point, PHYSICS_CONSTANTS } from '../types';
 
 const { G, K, G_K } = PHYSICS_CONSTANTS;
+const Y_SCALE = 1.2; // 1 Grid Unit in Y = 1.2 Physical Units
 
 /**
  * Root finding algorithm (Bisection method) to replace scipy.optimize.brentq
@@ -52,6 +53,7 @@ export const calculateTrajectory = (
   const vx_init = power * Math.cos(rad);
   const vy_init = power * Math.sin(rad);
 
+  const start_y_phys = start.y * Y_SCALE;
   const points: Point[] = [];
   let t = 0;
   
@@ -60,13 +62,12 @@ export const calculateTrajectory = (
     // x(t) = ((vx - v_wind)/K) * (1 - e^-Kt) + v_wind*t
     const term1_x = (vx_init - v_wind) / K;
     const term2 = 1 - Math.exp(-K * t);
-    const term3_x = v_wind * t;
-    const x = start.x + (term1_x * term2 + term3_x);
+    const x = start.x + (term1_x * term2 + v_wind * t);
 
     // y(t) = ((vy + G_K)/K) * (1 - e^-Kt) - G_K*t
     const term1_y = (vy_init + G_K) / K;
-    const term3_y = G_K * t;
-    const y = start.y + (term1_y * term2 - term3_y);
+    const y_phys = start_y_phys + (term1_y * term2 - G_K * t);
+    const y = y_phys / Y_SCALE;
 
     points.push({ x, y });
 
@@ -99,6 +100,8 @@ export const solvePower = (
   angle: number,
   wind: number
 ): number | null => {
+  const height_phys = height * Y_SCALE;
+  
   // Edge case: Target extremely close
   if (Math.abs(dist) < 0.1) return 1.0;
 
@@ -124,8 +127,8 @@ export const solvePower = (
    */
   const error_func = (t: number): number => {
       const E = 1 - Math.exp(-K * t);
-      // derived term: x * tanTheta + C * (E/K - t) - height
-      return (dist * tanTheta) + C * ((E / K) - t) - height;
+      // derived term: x * tanTheta + C * (E/K - t) - height_phys
+      return (dist * tanTheta) + C * ((E / K) - t) - height_phys;
   };
 
   // Search for a root in time t [0.01s, 20s]
